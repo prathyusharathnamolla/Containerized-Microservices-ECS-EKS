@@ -1,0 +1,33 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - $(aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY)
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - echo IMAGE_TAG=$IMAGE_TAG
+
+  build:
+    commands:
+      - echo Building Docker image for user-service...
+      - docker build -t user-service:$IMAGE_TAG ./user-service
+      - docker tag user-service:$IMAGE_TAG $ECR_REGISTRY/user-service-repo:$IMAGE_TAG
+
+      - echo Building Docker image for product-service...
+      - docker build -t product-service:$IMAGE_TAG ./product-service
+      - docker tag product-service:$IMAGE_TAG $ECR_REGISTRY/product-service-repo:$IMAGE_TAG
+
+  post_build:
+    commands:
+      - echo Pushing Docker images to ECR...
+      - docker push $ECR_REGISTRY/user-service-repo:$IMAGE_TAG
+      - docker push $ECR_REGISTRY/product-service-repo:$IMAGE_TAG
+
+      - echo Writing imagedefinitions.json...
+      - printf '[{"name":"user-service","imageUri":"%s/user-service-repo:%s"},' $ECR_REGISTRY $IMAGE_TAG > imagedefinitions.json
+      - printf '{"name":"product-service","imageUri":"%s/product-service-repo:%s"}]' $ECR_REGISTRY $IMAGE_TAG >> imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
